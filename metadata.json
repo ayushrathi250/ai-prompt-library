@@ -1,0 +1,6 @@
+{
+  "name": "AI Prompt Library",
+  "description": "Production-grade AI Prompt Library SaaS web application with drag-and-drop reordering, categories, search, import/export, and dark mode.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,93 @@
+import mongoose, { Document, Schema } from 'mongoose';
+import { PromptCategory } from '../../src/types/prompt';
+
+export interface IPrompt extends Document {
+  title: string;
+  prompt: string;
+  description?: string;
+  category: PromptCategory;
+  tags: string[];
+  favorite: boolean;
+  pinned: boolean;
+  displayOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const PromptSchema = new Schema<IPrompt>(
+  {
+    title: {
+      type: String,
+      required: [true, 'Title is required'],
+      trim: true,
+      maxlength: [120, 'Title cannot exceed 120 characters'],
+    },
+    prompt: {
+      type: String,
+      required: [true, 'Prompt content is required'],
+      trim: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: [300, 'Description cannot exceed 300 characters'],
+    },
+    category: {
+      type: String,
+      required: [true, 'Category is required'],
+      enum: {
+        values: [
+          'Coding',
+          'Marketing',
+          'Content Writing',
+          'Email',
+          'Resume',
+          'SQL',
+          'Design',
+          'Social Media',
+          'Productivity',
+          'Others',
+        ],
+        message: '{VALUE} is not a valid category',
+      },
+      default: 'Others',
+    },
+    tags: {
+      type: [String],
+      default: [],
+    },
+    favorite: {
+      type: Boolean,
+      default: false,
+    },
+    pinned: {
+      type: Boolean,
+      default: false,
+    },
+    displayOrder: {
+      type: Number,
+      default: 0,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Indexes for high performance querying
+PromptSchema.index({ category: 1 });
+PromptSchema.index({ favorite: 1 });
+PromptSchema.index({ pinned: 1 });
+PromptSchema.index({ displayOrder: 1 });
+PromptSchema.index({ createdAt: -1 });
+
+// Text index for search
+PromptSchema.index({
+  title: 'text',
+  prompt: 'text',
+  description: 'text',
+  tags: 'text',
+});
+
+export const PromptModel = (mongoose.models.Prompt || mongoose.model<IPrompt>('Prompt', PromptSchema)) as mongoose.Model<IPrompt>;
