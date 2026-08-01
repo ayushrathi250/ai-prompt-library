@@ -6,33 +6,41 @@ import compression from 'compression';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
 
-import { connectDB } from './backend/config/db';
-import promptRoutes from './backend/routes/promptRoutes';
-import { errorHandler } from './backend/middleware/errorHandler';
+import { connectDB } from '../database/config/db';
+import promptRoutes from './routes/promptRoutes';
+import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
-  // Enable trust proxy for reverse proxy environments (e.g., Cloud Run / Nginx)
-  app.set('trust proxy', 1);
+  // Enable trust proxy for reverse proxy environments (e.g., Cloud Run / Nginx / Fly.io)
+  if (process.env.TRUST_PROXY) {
+    app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
+  }
 
-  // Initialize DB Connection (falls back safely to in-memory if MONGO_URI is unset/invalid)
+  // Initialize DB Connection
   await connectDB();
 
   // Middleware Security & Performance
   app.use(
     helmet({
-      contentSecurityPolicy: false, // Disabled for Vite dev server compatibility
-      crossOriginEmbedderPolicy: false,
+      contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+      crossOriginEmbedderPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
     })
   );
   app.use(compression());
-  app.use(cors());
+
+  const allowedOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*';
+  app.use(
+    cors({
+      origin: allowedOrigins,
+      credentials: true,
+    })
+  );
   app.use(express.json({ limit: '5mb' }));
   app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
@@ -51,7 +59,7 @@ async function startServer() {
 
   app.use('/api', apiLimiter);
 
-  // API Routes - Mounted FIRST before Vite middleware
+  // API Routes
   app.use('/api', promptRoutes);
 
   // Healthcheck endpoint
@@ -66,23 +74,15 @@ async function startServer() {
   // Centralized Error Handling Middleware
   app.use(errorHandler);
 
-  // Vite middleware for development vs Static serving for production
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+  // Serve static files in production if the frontend is built locally
+  const distPath = path.join(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 AI Prompt Library SaaS Server running at http://localhost:${PORT}`);
+  app.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`🚀 AI Prompt Library API Server running at http://localhost:${PORT}`);
   });
 }
 

@@ -1,5 +1,16 @@
 import mongoose, { Document, Schema } from 'mongoose';
-import { PromptCategory } from '../../src/types/prompt';
+
+export type PromptCategory =
+  | 'Coding'
+  | 'Marketing'
+  | 'Content Writing'
+  | 'Email'
+  | 'Resume'
+  | 'SQL'
+  | 'Design'
+  | 'Social Media'
+  | 'Productivity'
+  | 'Others';
 
 export interface IPrompt extends Document {
   title: string;

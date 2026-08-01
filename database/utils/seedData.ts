@@ -1,4 +1,4 @@
-import { PromptCategory } from '../../src/types/prompt';
+import { PromptCategory } from '../models/Prompt';
 
 export interface SeedPrompt {
   _id: string;
