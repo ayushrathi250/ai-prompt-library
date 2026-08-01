@@ -1,12 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   DndContext,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
+  DragStartEvent,
   DragEndEvent,
+  DragOverlay,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -34,11 +37,18 @@ export const PromptList: React.FC<PromptListProps> = ({
   enableDrag = true,
 }) => {
   const { reorderPromptsLocallyAndSave, setIsCreateModalOpen } = usePrompts();
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5, // Requires 5px drag to trigger to avoid accidental drags
+        distance: 5, // Requires 5px drag to trigger to avoid accidental clicks
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150,
+        tolerance: 5,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -46,17 +56,31 @@ export const PromptList: React.FC<PromptListProps> = ({
     })
   );
 
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    setActiveId(null);
+
     if (!over || active.id === over.id) return;
 
     const oldIndex = prompts.findIndex((item) => item._id === active.id);
     const newIndex = prompts.findIndex((item) => item._id === over.id);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      const newItems = arrayMove(prompts, oldIndex, newIndex);
-      reorderPromptsLocallyAndSave(newItems);
+      const reordered = arrayMove(prompts, oldIndex, newIndex);
+      // Keep pinned items at the top section, non-pinned below
+      const pinned = reordered.filter((p: Prompt) => p.pinned);
+      const unpinned = reordered.filter((p: Prompt) => !p.pinned);
+      const finalOrder = [...pinned, ...unpinned];
+      reorderPromptsLocallyAndSave(finalOrder);
     }
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
   };
 
   if (isLoading) {
@@ -74,9 +98,16 @@ export const PromptList: React.FC<PromptListProps> = ({
   }
 
   const itemIds = prompts.map((p) => p._id);
+  const activePrompt = activeId ? prompts.find((p) => p._id === activeId) : null;
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
       <SortableContext items={itemIds} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {prompts.map((prompt) => (
@@ -89,6 +120,17 @@ export const PromptList: React.FC<PromptListProps> = ({
           ))}
         </div>
       </SortableContext>
+
+      <DragOverlay dropAnimation={{ duration: 150, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+        {activePrompt ? (
+          <PromptCard
+            prompt={activePrompt}
+            onView={onViewPrompt}
+            isSortable={false}
+            isOverlay
+          />
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 };

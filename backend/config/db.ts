@@ -4,6 +4,16 @@ import { INITIAL_SEED_PROMPTS, SeedPrompt } from '../utils/seedData';
 let mongoConnected = false;
 let inMemoryPrompts: SeedPrompt[] = [...INITIAL_SEED_PROMPTS];
 
+mongoose.connection.on('disconnected', () => {
+  mongoConnected = false;
+  console.warn('⚠️ MongoDB connection lost. Falling back to in-memory store.');
+});
+
+mongoose.connection.on('connected', () => {
+  mongoConnected = true;
+  console.log('✅ MongoDB connection established.');
+});
+
 export const connectDB = async (): Promise<boolean> => {
   const uri = process.env.MONGO_URI;
 
@@ -27,7 +37,9 @@ export const connectDB = async (): Promise<boolean> => {
   }
 };
 
-export const isMongoConnected = () => mongoConnected;
+export const isMongoConnected = () => {
+  return mongoConnected && mongoose.connection.readyState === 1;
+};
 
 export const getInMemoryPrompts = () => inMemoryPrompts;
 

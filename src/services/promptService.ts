@@ -55,8 +55,9 @@ export const promptService = {
     return response.data.data;
   },
 
-  async reorderPrompts(items: { id: string; displayOrder: number }[]): Promise<void> {
-    await api.patch('/prompts/reorder', items);
+  async reorderPrompts(orderedIds: string[]): Promise<Prompt[]> {
+    const response = await api.patch<{ success: boolean; data: Prompt[] }>('/prompts/reorder', { orderedIds });
+    return response.data.data;
   },
 
   async importPrompts(jsonArray: any[]): Promise<ImportResult> {

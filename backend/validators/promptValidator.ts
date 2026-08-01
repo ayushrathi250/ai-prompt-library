@@ -45,9 +45,14 @@ export const importPromptsSchema = z.array(
   })
 );
 
-export const reorderSchema = z.array(
+export const reorderSchema = z.union([
   z.object({
-    id: z.string(),
-    displayOrder: z.number(),
-  })
-);
+    orderedIds: z.array(z.string().min(1, 'ID cannot be empty')),
+  }),
+  z.array(
+    z.object({
+      id: z.string(),
+      displayOrder: z.number(),
+    })
+  ),
+]);

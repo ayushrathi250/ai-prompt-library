@@ -21,9 +21,15 @@ interface PromptCardProps {
   prompt: Prompt;
   onView: (prompt: Prompt) => void;
   isSortable?: boolean;
+  isOverlay?: boolean;
 }
 
-export const PromptCard: React.FC<PromptCardProps> = ({ prompt, onView, isSortable = true }) => {
+export const PromptCard: React.FC<PromptCardProps> = ({
+  prompt,
+  onView,
+  isSortable = true,
+  isOverlay = false,
+}) => {
   const {
     toggleFavorite,
     togglePin,
@@ -35,14 +41,14 @@ export const PromptCard: React.FC<PromptCardProps> = ({ prompt, onView, isSortab
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: prompt._id,
-    disabled: !isSortable,
+    disabled: !isSortable || isOverlay,
   });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-    zIndex: isDragging ? 50 : 1,
+    transition: transition || undefined,
+    opacity: isDragging ? 0.3 : 1,
+    zIndex: isDragging ? 50 : isOverlay ? 999 : 1,
   };
 
   const formattedCreated = new Date(prompt.createdAt).toLocaleDateString(undefined, {
@@ -52,16 +58,16 @@ export const PromptCard: React.FC<PromptCardProps> = ({ prompt, onView, isSortab
   });
 
   return (
-    <motion.div
+    <div
       ref={setNodeRef}
       style={style}
-      whileHover={{ y: -2 }}
-      transition={{ duration: 0.15 }}
       className={`group relative flex flex-col justify-between rounded-xl bg-white dark:bg-slate-900 border ${
-        prompt.pinned
-          ? 'border-indigo-500/50 dark:border-indigo-500/60 shadow-indigo-500/5'
-          : 'border-slate-200 dark:border-slate-800 shadow-sm'
-      } hover:shadow-md transition-all h-full overflow-hidden`}
+        isOverlay
+          ? 'border-indigo-500 shadow-2xl ring-2 ring-indigo-500 scale-[1.02] cursor-grabbing'
+          : prompt.pinned
+          ? 'border-indigo-500/50 dark:border-indigo-500/60 shadow-indigo-500/5 hover:-translate-y-0.5'
+          : 'border-slate-200 dark:border-slate-800 shadow-sm hover:-translate-y-0.5'
+      } hover:shadow-md transition-all duration-150 h-full overflow-hidden`}
     >
       {/* Top Bar & Content Area */}
       <div className="p-5 pb-3">
@@ -214,6 +220,6 @@ export const PromptCard: React.FC<PromptCardProps> = ({ prompt, onView, isSortab
           </button>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };

@@ -226,18 +226,16 @@ export const PromptProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const reorderPromptsLocallyAndSave = async (reordered: Prompt[]) => {
+    const previousPrompts = [...prompts];
     setPrompts(reordered);
-    const items = reordered.map((item, index) => ({
-      id: item._id,
-      displayOrder: index + 1,
-    }));
+    const orderedIds = reordered.map((item) => item._id);
 
     try {
-      await promptService.reorderPrompts(items);
+      await promptService.reorderPrompts(orderedIds);
       toast.success('Display order saved', { duration: 1500 });
     } catch (err) {
+      setPrompts(previousPrompts);
       toast.error('Failed to save display order');
-      fetchPrompts();
     }
   };
 
