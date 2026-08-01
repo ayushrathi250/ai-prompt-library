@@ -21,6 +21,7 @@ export interface IPrompt extends Document {
   favorite: boolean;
   pinned: boolean;
   displayOrder: number;
+  usageCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,7 +43,7 @@ const PromptSchema = new Schema<IPrompt>(
       type: String,
       trim: true,
       default: '',
-      maxlength: [300, 'Description cannot exceed 300 characters'],
+      maxlength: [400, 'Description cannot exceed 400 characters'],
     },
     category: {
       type: String,
@@ -80,9 +81,35 @@ const PromptSchema = new Schema<IPrompt>(
       type: Number,
       default: 0,
     },
+    usageCount: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,
+    toJSON: {
+      transform(_doc, ret: any) {
+        ret.id = ret._id ? ret._id.toString() : ret.id;
+        ret.content = ret.prompt || ret.content;
+        ret.isFavorite = ret.favorite !== undefined ? ret.favorite : ret.isFavorite;
+        ret.isPinned = ret.pinned !== undefined ? ret.pinned : ret.isPinned;
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
+    toObject: {
+      transform(_doc, ret: any) {
+        ret.id = ret._id ? ret._id.toString() : ret.id;
+        ret.content = ret.prompt || ret.content;
+        ret.isFavorite = ret.favorite !== undefined ? ret.favorite : ret.isFavorite;
+        ret.isPinned = ret.pinned !== undefined ? ret.pinned : ret.isPinned;
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
 );
 
@@ -101,4 +128,5 @@ PromptSchema.index({
   tags: 'text',
 });
 
-export const PromptModel = (mongoose.models.Prompt || mongoose.model<IPrompt>('Prompt', PromptSchema)) as mongoose.Model<IPrompt>;
+export const PromptModel = (mongoose.models.Prompt ||
+  mongoose.model<IPrompt>('Prompt', PromptSchema)) as mongoose.Model<IPrompt>;

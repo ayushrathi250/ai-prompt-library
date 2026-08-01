@@ -1,48 +1,53 @@
-import React from 'react';
-import { PromptCategory } from '../../types/prompt';
-import { getCategoryInfo } from '../../constants/categories';
+import React, { type ReactNode } from 'react';
+import { getCategory } from '../../constants/categories';
 
 interface CategoryBadgeProps {
-  category: PromptCategory;
-  size?: 'sm' | 'md' | 'lg';
+  category: string;
+  size?: 'sm' | 'md';
+  withIcon?: boolean;
   className?: string;
 }
 
-export const CategoryBadge: React.FC<CategoryBadgeProps> = ({ category, size = 'md', className = '' }) => {
-  const info = getCategoryInfo(category);
-
-  const sizeClasses = {
-    sm: 'px-2 py-0.5 text-xs font-medium rounded-full',
-    md: 'px-2.5 py-1 text-xs font-semibold rounded-full',
-    lg: 'px-3 py-1.5 text-sm font-semibold rounded-full',
-  };
-
+/** Color-coded category badge — tints derive from the category accent. */
+export function Badge({
+  category,
+  size = 'sm',
+  withIcon = true,
+  className = '',
+}: CategoryBadgeProps) {
+  const meta = getCategory(category);
+  const Icon = meta.icon;
   return (
     <span
-      className={`inline-flex items-center gap-1.5 border transition-all ${info.badgeColor} ${sizeClasses[size]} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border font-medium tracking-wide whitespace-nowrap ${
+        size === 'sm' ? 'px-2.5 py-0.5 text-[11px]' : 'px-3 py-1 text-xs'
+      } ${className}`}
+      style={{
+        color: meta.color,
+        borderColor: `color-mix(in srgb, ${meta.color} 38%, transparent)`,
+        background: `color-mix(in srgb, ${meta.color} 12%, transparent)`,
+      }}
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80" />
-      {info.name}
+      {withIcon && <Icon className={size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5'} strokeWidth={2.2} />}
+      {meta.name}
     </span>
   );
-};
-
-interface TagPillProps {
-  tag: string;
-  onRemove?: () => void;
-  onClick?: () => void;
-  className?: string;
 }
 
-export const TagPill: React.FC<TagPillProps> = ({ tag, onRemove, onClick, className = '' }) => {
-  return (
-    <span
-      onClick={onClick}
-      className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-md transition-colors ${
-        onClick ? 'cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700' : ''
-      } ${className}`}
-    >
-      #{tag}
+interface TagPillProps {
+  key?: React.Key;
+  label: string;
+  onRemove?: () => void;
+  onClick?: () => void;
+  active?: boolean;
+}
+
+/** `#tag` pill used on cards and inside the tag input. */
+export function TagPill({ label, onRemove, onClick, active }: TagPillProps) {
+  const content = (
+    <>
+      <span className="font-mono text-[11px] opacity-60">#</span>
+      {label}
       {onRemove && (
         <button
           type="button"
@@ -50,11 +55,51 @@ export const TagPill: React.FC<TagPillProps> = ({ tag, onRemove, onClick, classN
             e.stopPropagation();
             onRemove();
           }}
-          className="ml-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+          className="ml-0.5 rounded-full px-1 text-muted transition-colors hover:text-danger"
+          aria-label={`Remove tag ${label}`}
         >
-          &times;
+          ×
         </button>
       )}
+    </>
+  );
+
+  const base = `inline-flex items-center gap-0.5 rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+    active
+      ? 'border-primary/50 bg-primary/12 text-primary'
+      : 'border-edge bg-surface-2/60 text-muted hover:border-edge-strong hover:text-ink-soft'
+  }`;
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={base}>
+        {content}
+      </button>
+    );
+  }
+  return <span className={base}>{content}</span>;
+}
+
+/** Generic small status chip. */
+export function StatusChip({
+  children,
+  tone = 'neutral',
+}: {
+  children: ReactNode;
+  tone?: 'neutral' | 'primary' | 'accent';
+}) {
+  const tones = {
+    neutral: 'border-edge bg-surface-2/70 text-muted',
+    primary: 'border-primary/40 bg-primary/10 text-primary',
+    accent: 'border-accent/40 bg-accent/10 text-accent',
+  } as const;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${tones[tone]}`}
+    >
+      {children}
     </span>
   );
-};
+}
+
+export default Badge;

@@ -1,15 +1,30 @@
-import { PromptModel, IPrompt, PromptCategory } from '../models/Prompt';
+import { PromptModel, PromptCategory } from '../models/Prompt';
 import { IPromptRepository, PromptQueryFilter, ReorderItem, PromptStats } from './promptRepository';
+import { INITIAL_SEED_PROMPTS } from '../utils/seedData';
 
 function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function normalizeInputData(data: any): any {
+  const normalized: any = { ...data };
+  if (data.content !== undefined && data.prompt === undefined) {
+    normalized.prompt = data.content;
+  }
+  if (data.isFavorite !== undefined && data.favorite === undefined) {
+    normalized.favorite = data.isFavorite;
+  }
+  if (data.isPinned !== undefined && data.pinned === undefined) {
+    normalized.pinned = data.isPinned;
+  }
+  return normalized;
+}
+
 export class MongoPromptRepository implements IPromptRepository {
-  async getPrompts(filter: PromptQueryFilter): Promise<any[]> {
+  async getPrompts(filter?: PromptQueryFilter): Promise<any[]> {
     const filterObj: any = {};
 
-    if (filter.search) {
+    if (filter?.search) {
       const escapedQuery = escapeRegExp(filter.search);
       const searchRegex = new RegExp(escapedQuery, 'i');
       filterObj.$or = [
@@ -20,59 +35,77 @@ export class MongoPromptRepository implements IPromptRepository {
       ];
     }
 
-    if (filter.category && filter.category !== 'All') {
+    if (filter?.category && filter.category !== 'All') {
       filterObj.category = filter.category;
     }
 
-    if (filter.favorite === 'true') {
+    if (filter?.favorite === 'true') {
       filterObj.favorite = true;
     }
 
-    if (filter.pinned === 'true') {
+    if (filter?.pinned === 'true') {
       filterObj.pinned = true;
     }
 
     let sortObj: any = {};
-    const sort = filter.sort || 'custom';
+    const sort = filter?.sort || 'custom';
     if (sort === 'newest') sortObj = { createdAt: -1 };
     else if (sort === 'oldest') sortObj = { createdAt: 1 };
-    else if (sort === 'a-z') sortObj = { title: 1 };
-    else if (sort === 'z-a') sortObj = { title: -1 };
+    else if (sort === 'a-z' || sort === 'az') sortObj = { title: 1 };
+    else if (sort === 'z-a' || sort === 'za') sortObj = { title: -1 };
     else sortObj = { pinned: -1, displayOrder: 1, createdAt: -1 };
 
-    return await PromptModel.find(filterObj).sort(sortObj);
+    const docs = await PromptModel.find(filterObj).sort(sortObj);
+    return docs.map((doc) => doc.toJSON());
   }
 
   async getPromptById(id: string): Promise<any | null> {
     if (!id.match(/^[0-9a-fA-F]{24}$/)) return null;
-    return await PromptModel.findById(id);
+    const doc = await PromptModel.findById(id);
+    return doc ? doc.toJSON() : null;
   }
 
   async createPrompt(data: {
     title: string;
-    prompt: string;
+    content?: string;
+    prompt?: string;
     description?: string;
     category: PromptCategory;
     tags?: string[];
+    isFavorite?: boolean;
+    isPinned?: boolean;
+    usageCount?: number;
+    displayOrder?: number;
   }): Promise<any> {
+    const normalized = normalizeInputData(data);
     const count = await PromptModel.countDocuments();
-    return await PromptModel.create({
-      title: data.title,
-      prompt: data.prompt,
-      description: data.description || '',
-      category: data.category,
-      tags: data.tags || [],
-      displayOrder: count + 1,
+
+    const created = await PromptModel.create({
+      title: normalized.title,
+      prompt: normalized.prompt || normalized.content || '',
+      description: normalized.description || '',
+      category: normalized.category || 'Others',
+      tags: normalized.tags || [],
+      favorite: normalized.favorite || false,
+      pinned: normalized.pinned || false,
+      usageCount: normalized.usageCount || 0,
+      displayOrder: normalized.displayOrder ?? (count + 1),
     });
+
+    return created.toJSON();
   }
 
   async updatePrompt(id: string, data: any): Promise<any | null> {
     if (!id.match(/^[0-9a-fA-F]{24}$/)) return null;
-    return await PromptModel.findByIdAndUpdate(
+    const normalized = normalizeInputData(data);
+
+    const updated = await PromptModel.findByIdAndUpdate(
       id,
-      { ...data, updatedAt: new Date() },
+      { ...normalized, updatedAt: new Date() },
       { new: true, runValidators: true }
     );
+
+    return updated ? updated.toJSON() : null;
   }
 
   async deletePrompt(id: string): Promise<boolean> {
@@ -87,16 +120,19 @@ export class MongoPromptRepository implements IPromptRepository {
     if (!original) return null;
 
     const count = await PromptModel.countDocuments();
-    return await PromptModel.create({
+    const copy = await PromptModel.create({
       title: `${original.title} (Copy)`,
       prompt: original.prompt,
       description: original.description,
       category: original.category,
-      tags: original.tags,
+      tags: [...original.tags],
       favorite: false,
       pinned: false,
+      usageCount: 0,
       displayOrder: count + 1,
     });
+
+    return copy.toJSON();
   }
 
   async toggleFavorite(id: string): Promise<any | null> {
@@ -105,7 +141,8 @@ export class MongoPromptRepository implements IPromptRepository {
     if (!prompt) return null;
 
     prompt.favorite = !prompt.favorite;
-    return await prompt.save();
+    await prompt.save();
+    return prompt.toJSON();
   }
 
   async togglePin(id: string): Promise<any | null> {
@@ -114,7 +151,8 @@ export class MongoPromptRepository implements IPromptRepository {
     if (!prompt) return null;
 
     prompt.pinned = !prompt.pinned;
-    return await prompt.save();
+    await prompt.save();
+    return prompt.toJSON();
   }
 
   async reorderPrompts(items: ReorderItem[]): Promise<any[]> {
@@ -126,51 +164,77 @@ export class MongoPromptRepository implements IPromptRepository {
     }));
 
     if (bulkOps.length > 0) {
-      await PromptModel.bulkWrite(bulkOps);
+      await PromptModel.bulkWrite(bulkOps as any);
     }
 
     return await this.getPrompts({});
   }
 
-  async importPrompts(prompts: any[]): Promise<number> {
+  async importPrompts(prompts: any[]): Promise<any[]> {
     const count = await PromptModel.countDocuments();
-    const docs = prompts.map((item, idx) => ({
+    const docs = prompts.map((item, idx) => {
+      const norm = normalizeInputData(item);
+      return {
+        title: norm.title,
+        prompt: norm.prompt || norm.content || '',
+        description: norm.description || '',
+        category: norm.category || 'Others',
+        tags: norm.tags || [],
+        favorite: norm.favorite || false,
+        pinned: norm.pinned || false,
+        usageCount: norm.usageCount || 0,
+        displayOrder: norm.displayOrder ?? (count + idx + 1),
+      };
+    });
+
+    await PromptModel.insertMany(docs);
+    return await this.getPrompts({});
+  }
+
+  async resetLibrary(): Promise<any[]> {
+    await PromptModel.deleteMany({});
+    const docs = INITIAL_SEED_PROMPTS.map((item, idx) => ({
       title: item.title,
       prompt: item.prompt,
-      description: item.description || '',
+      description: item.description,
       category: item.category,
-      tags: item.tags || [],
-      favorite: item.favorite || false,
-      pinned: item.pinned || false,
-      displayOrder: count + idx + 1,
+      tags: item.tags,
+      favorite: item.favorite,
+      pinned: item.pinned,
+      usageCount: 0,
+      displayOrder: idx + 1,
     }));
+    await PromptModel.insertMany(docs);
+    return await this.getPrompts({});
+  }
 
-    const inserted = await PromptModel.insertMany(docs);
-    return inserted.length;
+  async registerUse(id: string): Promise<any | null> {
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) return null;
+    const updated = await PromptModel.findByIdAndUpdate(
+      id,
+      { $inc: { usageCount: 1 } },
+      { new: true }
+    );
+    return updated ? updated.toJSON() : null;
   }
 
   async getStats(): Promise<PromptStats> {
-    const totalPrompts = await PromptModel.countDocuments();
-    const favoritePrompts = await PromptModel.countDocuments({ favorite: true });
-    const pinnedPrompts = await PromptModel.countDocuments({ pinned: true });
+    const total = await PromptModel.countDocuments();
+    const favorites = await PromptModel.countDocuments({ favorite: true });
+    const pinned = await PromptModel.countDocuments({ pinned: true });
 
     const categoriesAggregation = await PromptModel.aggregate([
       { $group: { _id: '$category', count: { $sum: 1 } } },
     ]);
 
-    const categoryBreakdown: Record<string, number> = {};
-    categoriesAggregation.forEach((item) => {
-      categoryBreakdown[item._id] = item.count;
-    });
-
-    const recentlyAdded = await PromptModel.find().sort({ createdAt: -1 }).limit(5);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const recentlyAdded = await PromptModel.countDocuments({ createdAt: { $gte: weekAgo } });
 
     return {
-      totalPrompts,
-      favoritePrompts,
-      pinnedPrompts,
-      categoriesCount: Object.keys(categoryBreakdown).length,
-      categoryBreakdown,
+      total,
+      favorites,
+      pinned,
+      activeCategories: categoriesAggregation.length,
       recentlyAdded,
     };
   }

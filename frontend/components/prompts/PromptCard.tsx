@@ -1,225 +1,261 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import toast from 'react-hot-toast';
 import {
-  Heart,
-  Pin,
   Copy,
-  GripVertical,
-  Edit2,
+  Check,
+  Star,
+  Pin,
+  PinOff,
+  Pencil,
   Trash2,
   CopyPlus,
-  Clock,
-  Sparkles,
+  GripVertical,
+  MoreHorizontal,
+  Maximize2,
+  CalendarDays,
 } from 'lucide-react';
-import { Prompt } from '../../types/prompt';
-import { CategoryBadge, TagPill } from '../common/Badge';
+import type { Prompt } from '../../types/prompt';
+import { getCategory } from '../../constants/categories';
+import { Badge, TagPill } from '../common/Badge';
 import { usePrompts } from '../../context/PromptContext';
 
 interface PromptCardProps {
+  key?: React.Key;
   prompt: Prompt;
-  onView: (prompt: Prompt) => void;
-  isSortable?: boolean;
-  isOverlay?: boolean;
+  onEdit: (prompt: Prompt) => void;
+  onDelete: (prompt: Prompt) => void;
+  onOpen: (prompt: Prompt) => void;
+  draggable?: boolean;
+  index?: number;
 }
 
-export const PromptCard: React.FC<PromptCardProps> = ({
-  prompt,
-  onView,
-  isSortable = true,
-  isOverlay = false,
-}) => {
-  const {
-    toggleFavorite,
-    togglePin,
-    copyToClipboard,
-    setSelectedPromptForEdit,
-    setPromptToDelete,
-    duplicatePrompt,
-  } = usePrompts();
-
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: prompt._id,
-    disabled: !isSortable || isOverlay,
-  });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || undefined,
-    opacity: isDragging ? 0.3 : 1,
-    zIndex: isDragging ? 50 : isOverlay ? 999 : 1,
-  };
-
-  const formattedCreated = new Date(prompt.createdAt).toLocaleDateString(undefined, {
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
 
+export function PromptCard({
+  prompt,
+  onEdit,
+  onDelete,
+  onOpen,
+  draggable = false,
+  index = 0,
+}: PromptCardProps) {
+  const { toggleFavorite, togglePin, duplicatePrompt, registerUse } = usePrompts();
+  const [copied, setCopied] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: prompt.id, disabled: !draggable });
+
+  const meta = getCategory(prompt.category);
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    zIndex: isDragging ? 40 : undefined,
+    animationDelay: `${Math.min(index, 10) * 35}ms`,
+  } as React.CSSProperties;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(prompt.content);
+      setCopied(true);
+      registerUse(prompt.id);
+      toast.success('Prompt copied to clipboard', { id: `copy-${prompt.id}` });
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      toast.error('Clipboard unavailable in this browser');
+    }
+  };
+
   return (
-    <div
+    <article
       ref={setNodeRef}
       style={style}
-      className={`group relative flex flex-col justify-between rounded-xl bg-white dark:bg-slate-900 border ${
-        isOverlay
-          ? 'border-indigo-500 shadow-2xl ring-2 ring-indigo-500 scale-[1.02] cursor-grabbing'
-          : prompt.pinned
-          ? 'border-indigo-500/50 dark:border-indigo-500/60 shadow-indigo-500/5 hover:-translate-y-0.5'
-          : 'border-slate-200 dark:border-slate-800 shadow-sm hover:-translate-y-0.5'
-      } hover:shadow-md transition-all duration-150 h-full overflow-hidden`}
+      className={`animate-fade-up group relative flex h-full flex-col overflow-hidden rounded-xl border bg-surface/85 backdrop-blur-sm transition-shadow duration-200 ${
+        isDragging
+          ? 'border-primary/60 opacity-90 shadow-2xl shadow-black/20'
+          : 'border-edge hover:border-edge-strong hover:shadow-lg hover:shadow-black/5'
+      }`}
     >
-      {/* Top Bar & Content Area */}
-      <div className="p-5 pb-3">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2 overflow-hidden">
-            {/* Drag Handle */}
-            {isSortable && (
-              <button
-                {...attributes}
-                {...listeners}
-                type="button"
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-grab active:cursor-grabbing rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                title="Drag to reorder"
-              >
-                <GripVertical className="w-4 h-4" />
-              </button>
-            )}
+      {/* Category accent rail */}
+      <span
+        className="absolute inset-x-0 top-0 h-[3px]"
+        style={{
+          background: `linear-gradient(90deg, ${meta.color}, color-mix(in srgb, ${meta.color} 15%, transparent))`,
+        }}
+      />
 
-            <CategoryBadge category={prompt.category} size="sm" />
+      <div className="flex items-start gap-2 px-4 pb-2 pt-4">
+        {draggable && (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            aria-label="Drag to reorder"
+            className="focus-ring -ml-1 mt-0.5 cursor-grab touch-none rounded-md p-1 text-muted opacity-50 transition-opacity hover:bg-canvas-deep hover:text-ink active:cursor-grabbing group-hover:opacity-100"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
 
-            {prompt.pinned && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full">
-                <Pin className="w-2.5 h-2.5 fill-current" />
-                Pinned
-              </span>
-            )}
-          </div>
+        <Badge category={prompt.category} />
 
-          {/* Action Icons */}
-          <div className="flex items-center gap-1 opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleFavorite(prompt._id);
-              }}
-              className={`p-1.5 rounded-lg transition-colors ${
-                prompt.favorite
-                  ? 'text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50'
-                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-              title={prompt.favorite ? 'Remove Favorite' : 'Mark Favorite'}
+        <div className="ml-auto flex items-center gap-0.5">
+          {prompt.isPinned && (
+            <span
+              title="Pinned"
+              className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/12 text-primary"
             >
-              <Heart className={`w-4 h-4 ${prompt.favorite ? 'fill-current' : ''}`} />
-            </button>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                togglePin(prompt._id);
-              }}
-              className={`p-1.5 rounded-lg transition-colors ${
-                prompt.pinned
-                  ? 'text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/50'
-                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-              title={prompt.pinned ? 'Unpin Prompt' : 'Pin to Top'}
-            >
-              <Pin className={`w-4 h-4 ${prompt.pinned ? 'fill-current' : ''}`} />
-            </button>
-          </div>
+              <Pin className="h-3.5 w-3.5 fill-current" />
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => toggleFavorite(prompt.id)}
+            aria-label={prompt.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            className={`focus-ring rounded-md p-1.5 transition-all active:scale-90 ${
+              prompt.isFavorite
+                ? 'text-primary'
+                : 'text-muted opacity-60 hover:text-primary group-hover:opacity-100'
+            }`}
+          >
+            <Star className={`h-4 w-4 ${prompt.isFavorite ? 'fill-current' : ''}`} />
+          </button>
         </div>
+      </div>
 
-        {/* Title */}
-        <h3
-          onClick={() => onView(prompt)}
-          className="text-base font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer line-clamp-1 transition-colors mb-1"
-        >
+      <button
+        type="button"
+        onClick={() => onOpen(prompt)}
+        className="px-4 text-left"
+      >
+        <h3 className="font-display text-[17px] font-semibold leading-snug tracking-tight text-ink transition-colors group-hover:text-primary">
           {prompt.title}
         </h3>
+      </button>
 
-        {/* Description */}
-        {prompt.description && (
-          <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-3 leading-relaxed">
-            {prompt.description}
-          </p>
-        )}
+      {prompt.description && (
+        <p className="clamp-2 mt-1.5 px-4 text-[13px] leading-relaxed text-muted">
+          {prompt.description}
+        </p>
+      )}
 
-        {/* Prompt Preview Box */}
-        <div
-          onClick={() => onView(prompt)}
-          className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 text-xs font-mono text-slate-700 dark:text-slate-300 line-clamp-3 cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors relative group/box"
-        >
-          {prompt.prompt}
+      <button
+        type="button"
+        onClick={() => onOpen(prompt)}
+        className="mx-4 mt-3 rounded-lg border border-edge bg-canvas-deep/60 p-3 text-left transition-colors hover:border-edge-strong"
+      >
+        <p className="clamp-3 whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-ink-soft/85">
+          {prompt.content}
+        </p>
+      </button>
+
+      {prompt.tags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5 px-4">
+          {prompt.tags.slice(0, 4).map((tag) => (
+            <TagPill key={tag} label={tag} />
+          ))}
+          {prompt.tags.length > 4 && (
+            <span className="self-center text-[11px] text-muted">
+              +{prompt.tags.length - 4}
+            </span>
+          )}
         </div>
+      )}
 
-        {/* Tags */}
-        {prompt.tags && prompt.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {prompt.tags.slice(0, 3).map((tag, idx) => (
-              <TagPill key={idx} tag={tag} />
-            ))}
-            {prompt.tags.length > 3 && (
-              <span className="text-[10px] font-semibold text-slate-400 self-center">
-                +{prompt.tags.length - 3} more
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Bottom Bar Controls / Footer */}
-      <div className="px-5 py-3 bg-slate-50/60 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
-        <span className="flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-          <Clock className="w-3.5 h-3.5" />
-          {formattedCreated}
+      <div className="mt-auto flex items-center gap-2 border-t border-edge px-3 py-2.5 pt-3">
+        <span className="flex items-center gap-1.5 pl-1 text-[11px] text-muted">
+          <CalendarDays className="h-3.5 w-3.5" strokeWidth={1.8} />
+          {formatDate(prompt.createdAt)}
         </span>
 
-        <div className="flex items-center gap-1">
-          {/* Copy Prompt Button */}
+        <div className="ml-auto flex items-center gap-0.5">
           <button
             type="button"
-            onClick={() => copyToClipboard(prompt.prompt, prompt.title)}
-            className="px-2.5 py-1 rounded-md text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors flex items-center gap-1"
-            title="Copy prompt text"
+            onClick={handleCopy}
+            title="Copy prompt"
+            aria-label="Copy prompt to clipboard"
+            className={`focus-ring rounded-lg p-1.5 transition-colors ${
+              copied ? 'text-accent' : 'text-muted hover:bg-canvas-deep hover:text-ink'
+            }`}
           >
-            <Copy className="w-3.5 h-3.5" />
-            Copy
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => togglePin(prompt.id)}
+            title={prompt.isPinned ? 'Unpin' : 'Pin to top'}
+            aria-label={prompt.isPinned ? 'Unpin prompt' : 'Pin prompt'}
+            className="focus-ring rounded-lg p-1.5 text-muted transition-colors hover:bg-canvas-deep hover:text-ink"
+          >
+            {prompt.isPinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => onEdit(prompt)}
+            title="Edit"
+            aria-label="Edit prompt"
+            className="focus-ring rounded-lg p-1.5 text-muted transition-colors hover:bg-canvas-deep hover:text-ink"
+          >
+            <Pencil className="h-4 w-4" />
           </button>
 
-          {/* Duplicate */}
-          <button
-            type="button"
-            onClick={() => duplicatePrompt(prompt._id)}
-            className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
-            title="Duplicate Prompt"
-          >
-            <CopyPlus className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Edit */}
-          <button
-            type="button"
-            onClick={() => setSelectedPromptForEdit(prompt)}
-            className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
-            title="Edit Prompt"
-          >
-            <Edit2 className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Delete */}
-          <button
-            type="button"
-            onClick={() => setPromptToDelete(prompt)}
-            className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
-            title="Delete Prompt"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              onBlur={() => window.setTimeout(() => setMenuOpen(false), 140)}
+              title="More actions"
+              aria-label="More actions"
+              aria-expanded={menuOpen}
+              className="focus-ring rounded-lg p-1.5 text-muted transition-colors hover:bg-canvas-deep hover:text-ink"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            {menuOpen && (
+              <div className="animate-pop-in absolute bottom-full right-0 z-30 mb-1.5 w-44 overflow-hidden rounded-xl border border-edge bg-surface py-1 shadow-xl shadow-black/15">
+                <button
+                  type="button"
+                  onClick={() => onOpen(prompt)}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-ink-soft transition-colors hover:bg-canvas-deep hover:text-ink"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" /> View details
+                </button>
+                <button
+                  type="button"
+                  onClick={() => duplicatePrompt(prompt)}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-ink-soft transition-colors hover:bg-canvas-deep hover:text-ink"
+                >
+                  <CopyPlus className="h-3.5 w-3.5" /> Duplicate
+                </button>
+                <div className="my-1 h-px bg-edge" />
+                <button
+                  type="button"
+                  onClick={() => onDelete(prompt)}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-danger transition-colors hover:bg-danger/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </article>
   );
-};
+}
+
+export default PromptCard;

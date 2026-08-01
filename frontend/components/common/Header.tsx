@@ -1,107 +1,132 @@
-import React, { useState } from 'react';
-import { Search, Sun, Moon, Bell, Plus, Menu, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Menu, Search, Moon, Sun, Plus, X, Command, Upload } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { usePrompts } from '../../context/PromptContext';
 
 interface HeaderProps {
-  onToggleMobileSidebar: () => void;
+  onMenuClick: () => void;
+  onNewPrompt: () => void;
+  onImportExport: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onToggleMobileSidebar }) => {
-  const { theme, toggleTheme } = useTheme();
-  const { searchQuery, setSearchQuery, setIsCreateModalOpen } = usePrompts();
-  const [showNotifications, setShowNotifications] = useState(false);
+export function Header({ onMenuClick, onNewPrompt, onImportExport }: HeaderProps) {
+  const { isDark, toggleTheme } = useTheme();
+  // `searchInput` is the raw value; PromptContext debounces it by 300ms
+  // before it reaches `filters.search` and the list filtering.
+  const { setSearch, searchInput } = usePrompts();
+  const navigate = useNavigate();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const submitSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    navigate('/prompts');
+  };
 
   return (
-    <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between px-4 sm:px-8 sticky top-0 z-30 transition-colors">
-      {/* Left: Mobile Menu Trigger + Search */}
-      <div className="flex items-center gap-3 flex-1 max-w-md">
+    <header className="sticky top-0 z-50 border-b border-edge bg-canvas/85 backdrop-blur-xl">
+      <div className="flex h-16 items-center gap-2 px-4 sm:gap-3 sm:px-6">
         <button
           type="button"
-          onClick={onToggleMobileSidebar}
-          className="lg:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          aria-label="Toggle Navigation"
+          onClick={onMenuClick}
+          className="focus-ring rounded-lg p-2 text-ink-soft transition-colors hover:bg-canvas-deep lg:hidden"
+          aria-label="Open navigation"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="h-5 w-5" />
         </button>
 
-        {/* Global Search Bar */}
-        <div className="relative w-full">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-            <Search className="w-4 h-4" />
-          </div>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search prompts, tags, or categories..."
-            className="w-full pl-10 pr-9 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+        <form onSubmit={submitSearch} className="relative min-w-0 max-w-2xl flex-1">
+          <Search
+            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+            strokeWidth={2}
           />
-          {searchQuery && (
+          <input
+            ref={inputRef}
+            value={searchInput}
+            onChange={(e) => setSearch(e.target.value)}
+            type="search"
+            placeholder="Search titles, content, tags…"
+            aria-label="Search prompts"
+            className="focus-ring h-10 w-full rounded-xl border border-edge bg-surface/80 pl-10 pr-20 text-sm text-ink placeholder:text-muted/80 transition-colors focus:border-primary/50 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+          />
+          {searchInput ? (
             <button
-              onClick={() => setSearchQuery('')}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              type="button"
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted transition-colors hover:text-ink"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
+          ) : (
+            <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md border border-edge bg-canvas-deep px-1.5 py-0.5 font-mono text-[10px] text-muted sm:flex">
+              <Command className="h-2.5 w-2.5" />K
+            </kbd>
           )}
-        </div>
-      </div>
+        </form>
 
-      {/* Right: Actions */}
-      <div className="flex items-center gap-3 ml-4">
-        {/* Notification Bell */}
-        <div className="relative">
+        <div className="ml-auto flex items-center gap-1.5">
           <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="relative p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors"
-            title="Notifications"
+            type="button"
+            onClick={onImportExport}
+            aria-label="Import or export prompts"
+            title="Import / Export"
+            className="focus-ring hidden rounded-lg border border-edge bg-surface/70 p-2 text-ink-soft transition-colors hover:border-edge-strong hover:text-ink sm:block"
           >
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-indigo-600 ring-2 ring-white dark:ring-slate-900" />
+            <Upload className="h-4 w-4" strokeWidth={2} />
           </button>
 
-          {showNotifications && (
-            <div className="absolute right-0 mt-2 w-80 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg z-50">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3">
-                <h4 className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Notifications</h4>
-                <button onClick={() => setShowNotifications(false)} className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-                  Dismiss
-                </button>
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 border border-indigo-100 dark:border-indigo-900/50">
-                  <div className="flex items-center gap-1.5 font-semibold">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                    System Connected
-                  </div>
-                  <p className="mt-1 text-[11px] text-indigo-700 dark:text-indigo-300">
-                    MongoDB database engine operational with drag-and-drop support.
-                  </p>
-                </div>
-              </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+            title={isDark ? 'Light mode' : 'Dark mode'}
+            className="focus-ring relative overflow-hidden rounded-lg border border-edge bg-surface/70 p-2 text-ink-soft transition-colors hover:border-edge-strong hover:text-ink"
+          >
+            {isDark ? (
+              <Sun className="h-4 w-4 animate-fade-in" strokeWidth={2} />
+            ) : (
+              <Moon className="h-4 w-4 animate-fade-in" strokeWidth={2} />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onNewPrompt}
+            className="focus-ring group hidden items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-ink transition-opacity hover:opacity-90 sm:inline-flex"
+          >
+            <Plus className="h-4 w-4 transition-transform group-hover:rotate-90" strokeWidth={2.5} />
+            New
+          </button>
+
+          <div className="ml-1 flex items-center gap-2 border-l border-edge pl-2.5">
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-edge font-display text-[13px] font-semibold text-primary-ink"
+              style={{ background: 'var(--primary)' }}
+              title="Signed in as Avery Quinn"
+            >
+              AQ
             </div>
-          )}
+            <div className="hidden leading-tight xl:block">
+              <div className="text-[13px] font-semibold text-ink">Avery Quinn</div>
+              <div className="text-[11px] text-muted">Personal workspace</div>
+            </div>
+          </div>
         </div>
-
-        {/* Theme Toggle Button */}
-        <button
-          onClick={toggleTheme}
-          className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors"
-          title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
-        >
-          {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5 text-amber-400" />}
-        </button>
-
-        {/* Create Prompt Button */}
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm flex items-center gap-1.5"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Prompt</span>
-        </button>
       </div>
     </header>
   );
-};
+}
+
+export default Header;

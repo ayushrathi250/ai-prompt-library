@@ -1,14 +1,27 @@
 import { IPromptRepository, PromptQueryFilter, ReorderItem, PromptStats } from './promptRepository';
-import { INITIAL_SEED_PROMPTS, SeedPrompt } from '../utils/seedData';
+import { INITIAL_SEED_PROMPTS } from '../utils/seedData';
 import { PromptCategory } from '../models/Prompt';
 
 export class InMemoryPromptRepository implements IPromptRepository {
-  private static prompts: SeedPrompt[] = [...INITIAL_SEED_PROMPTS];
+  private static prompts: any[] = INITIAL_SEED_PROMPTS.map((p, idx) => ({
+    id: p._id,
+    title: p.title,
+    content: p.prompt,
+    description: p.description,
+    category: p.category,
+    tags: p.tags,
+    isFavorite: p.favorite,
+    isPinned: p.pinned,
+    displayOrder: idx + 1,
+    usageCount: 0,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  }));
 
   private processInMemoryPrompts(
-    prompts: SeedPrompt[],
+    prompts: any[],
     query: PromptQueryFilter
-  ): SeedPrompt[] {
+  ): any[] {
     let list = [...prompts];
 
     if (query.search) {
@@ -16,9 +29,9 @@ export class InMemoryPromptRepository implements IPromptRepository {
       list = list.filter(
         (p) =>
           p.title.toLowerCase().includes(q) ||
-          p.prompt.toLowerCase().includes(q) ||
+          (p.content && p.content.toLowerCase().includes(q)) ||
           (p.description && p.description.toLowerCase().includes(q)) ||
-          p.tags.some((t) => t.toLowerCase().includes(q))
+          p.tags.some((t: string) => t.toLowerCase().includes(q))
       );
     }
 
@@ -27,24 +40,24 @@ export class InMemoryPromptRepository implements IPromptRepository {
     }
 
     if (query.favorite === 'true') {
-      list = list.filter((p) => p.favorite);
+      list = list.filter((p) => p.isFavorite);
     }
 
     if (query.pinned === 'true') {
-      list = list.filter((p) => p.pinned);
+      list = list.filter((p) => p.isPinned);
     }
 
     const sort = query.sort || 'custom';
     list.sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
 
       if (sort === 'newest') {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       } else if (sort === 'oldest') {
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      } else if (sort === 'a-z') {
+      } else if (sort === 'a-z' || sort === 'az') {
         return a.title.localeCompare(b.title);
-      } else if (sort === 'z-a') {
+      } else if (sort === 'z-a' || sort === 'za') {
         return b.title.localeCompare(a.title);
       } else {
         return (a.displayOrder || 0) - (b.displayOrder || 0);
@@ -54,46 +67,65 @@ export class InMemoryPromptRepository implements IPromptRepository {
     return list;
   }
 
-  async getPrompts(filter: PromptQueryFilter): Promise<any[]> {
+  async getPrompts(filter: PromptQueryFilter = {}): Promise<any[]> {
     return this.processInMemoryPrompts(InMemoryPromptRepository.prompts, filter);
   }
 
   async getPromptById(id: string): Promise<any | null> {
-    const found = InMemoryPromptRepository.prompts.find((p) => p._id === id);
+    const found = InMemoryPromptRepository.prompts.find((p) => p.id === id);
     return found || null;
   }
 
   async createPrompt(data: {
     title: string;
-    prompt: string;
+    content?: string;
+    prompt?: string;
     description?: string;
     category: PromptCategory;
     tags?: string[];
+    isFavorite?: boolean;
+    isPinned?: boolean;
+    usageCount?: number;
+    displayOrder?: number;
   }): Promise<any> {
-    const newPrompt: SeedPrompt = {
-      _id: 'prompt-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+    const now = new Date().toISOString();
+    const newPrompt: any = {
+      id: 'p-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 7),
       title: data.title,
-      prompt: data.prompt,
+      content: data.content || data.prompt || '',
       description: data.description || '',
-      category: data.category,
+      category: data.category || 'Others',
       tags: data.tags || [],
-      favorite: false,
-      pinned: false,
-      displayOrder: InMemoryPromptRepository.prompts.length + 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      isFavorite: data.isFavorite || false,
+      isPinned: data.isPinned || false,
+      displayOrder: data.displayOrder ?? (InMemoryPromptRepository.prompts.length + 1),
+      usageCount: data.usageCount || 0,
+      createdAt: now,
+      updatedAt: now,
     };
     InMemoryPromptRepository.prompts = [newPrompt, ...InMemoryPromptRepository.prompts];
     return newPrompt;
   }
 
   async updatePrompt(id: string, data: any): Promise<any | null> {
-    const index = InMemoryPromptRepository.prompts.findIndex((p) => p._id === id);
+    const index = InMemoryPromptRepository.prompts.findIndex((p) => p.id === id);
     if (index === -1) return null;
+
+    const normalizedData: any = { ...data };
+    if (data.prompt !== undefined && data.content === undefined) {
+      normalizedData.content = data.prompt;
+    }
+    if (data.favorite !== undefined && data.isFavorite === undefined) {
+      normalizedData.isFavorite = data.favorite;
+    }
+    if (data.pinned !== undefined && data.isPinned === undefined) {
+      normalizedData.isPinned = data.pinned;
+    }
 
     const updated = {
       ...InMemoryPromptRepository.prompts[index],
-      ...data,
+      ...normalizedData,
+      id,
       updatedAt: new Date().toISOString(),
     };
     InMemoryPromptRepository.prompts[index] = updated;
@@ -102,23 +134,25 @@ export class InMemoryPromptRepository implements IPromptRepository {
 
   async deletePrompt(id: string): Promise<boolean> {
     const originalLength = InMemoryPromptRepository.prompts.length;
-    InMemoryPromptRepository.prompts = InMemoryPromptRepository.prompts.filter((p) => p._id !== id);
+    InMemoryPromptRepository.prompts = InMemoryPromptRepository.prompts.filter((p) => p.id !== id);
     return InMemoryPromptRepository.prompts.length < originalLength;
   }
 
   async duplicatePrompt(id: string): Promise<any | null> {
-    const original = InMemoryPromptRepository.prompts.find((p) => p._id === id);
+    const original = InMemoryPromptRepository.prompts.find((p) => p.id === id);
     if (!original) return null;
 
-    const copy: SeedPrompt = {
+    const now = new Date().toISOString();
+    const copy: any = {
       ...original,
-      _id: 'prompt-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      id: 'p-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 7),
       title: `${original.title} (Copy)`,
-      favorite: false,
-      pinned: false,
+      isFavorite: false,
+      isPinned: false,
+      usageCount: 0,
       displayOrder: InMemoryPromptRepository.prompts.length + 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
 
     InMemoryPromptRepository.prompts = [copy, ...InMemoryPromptRepository.prompts];
@@ -126,19 +160,19 @@ export class InMemoryPromptRepository implements IPromptRepository {
   }
 
   async toggleFavorite(id: string): Promise<any | null> {
-    const target = InMemoryPromptRepository.prompts.find((p) => p._id === id);
+    const target = InMemoryPromptRepository.prompts.find((p) => p.id === id);
     if (!target) return null;
 
-    target.favorite = !target.favorite;
+    target.isFavorite = !target.isFavorite;
     target.updatedAt = new Date().toISOString();
     return target;
   }
 
   async togglePin(id: string): Promise<any | null> {
-    const target = InMemoryPromptRepository.prompts.find((p) => p._id === id);
+    const target = InMemoryPromptRepository.prompts.find((p) => p.id === id);
     if (!target) return null;
 
-    target.pinned = !target.pinned;
+    target.isPinned = !target.isPinned;
     target.updatedAt = new Date().toISOString();
     return target;
   }
@@ -147,55 +181,72 @@ export class InMemoryPromptRepository implements IPromptRepository {
     const orderMap = new Map(items.map((i) => [i.id, i.displayOrder]));
 
     InMemoryPromptRepository.prompts.forEach((p) => {
-      if (orderMap.has(p._id)) {
-        p.displayOrder = orderMap.get(p._id)!;
+      if (orderMap.has(p.id)) {
+        p.displayOrder = orderMap.get(p.id)!;
       }
     });
 
     return this.getPrompts({});
   }
 
-  async importPrompts(prompts: any[]): Promise<number> {
-    const newItems: SeedPrompt[] = prompts.map((item, idx) => ({
-      _id: 'prompt-imp-' + Date.now() + '-' + idx,
+  async importPrompts(prompts: any[]): Promise<any[]> {
+    const now = new Date().toISOString();
+    const newItems: any[] = prompts.map((item, idx) => ({
+      id: item.id || ('p-imp-' + Date.now().toString(36) + '-' + idx),
       title: item.title,
-      prompt: item.prompt,
+      content: item.content || item.prompt || '',
       description: item.description || '',
-      category: item.category,
+      category: item.category || 'Others',
       tags: item.tags || [],
-      favorite: item.favorite || false,
-      pinned: item.pinned || false,
-      displayOrder: InMemoryPromptRepository.prompts.length + idx + 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      isFavorite: item.isFavorite !== undefined ? item.isFavorite : (item.favorite || false),
+      isPinned: item.isPinned !== undefined ? item.isPinned : (item.pinned || false),
+      displayOrder: item.displayOrder ?? (InMemoryPromptRepository.prompts.length + idx + 1),
+      usageCount: item.usageCount || 0,
+      createdAt: item.createdAt || now,
+      updatedAt: now,
     }));
 
     InMemoryPromptRepository.prompts = [...newItems, ...InMemoryPromptRepository.prompts];
-    return newItems.length;
+    return newItems;
+  }
+
+  async resetLibrary(): Promise<any[]> {
+    InMemoryPromptRepository.prompts = INITIAL_SEED_PROMPTS.map((p, idx) => ({
+      id: p._id,
+      title: p.title,
+      content: p.prompt,
+      description: p.description,
+      category: p.category,
+      tags: p.tags,
+      isFavorite: p.favorite,
+      isPinned: p.pinned,
+      displayOrder: idx + 1,
+      usageCount: 0,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    }));
+    return [...InMemoryPromptRepository.prompts];
+  }
+
+  async registerUse(id: string): Promise<any | null> {
+    const target = InMemoryPromptRepository.prompts.find((p) => p.id === id);
+    if (!target) return null;
+    target.usageCount = (target.usageCount || 0) + 1;
+    target.updatedAt = new Date().toISOString();
+    return target;
   }
 
   async getStats(): Promise<PromptStats> {
     const list = InMemoryPromptRepository.prompts;
-    const totalPrompts = list.length;
-    const favoritePrompts = list.filter((p) => p.favorite).length;
-    const pinnedPrompts = list.filter((p) => p.pinned).length;
-
-    const categoryBreakdown: Record<string, number> = {};
-    list.forEach((p) => {
-      categoryBreakdown[p.category] = (categoryBreakdown[p.category] || 0) + 1;
-    });
-
-    const recentlyAdded = [...list]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 5);
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const categories = new Set(list.map((p) => p.category));
 
     return {
-      totalPrompts,
-      favoritePrompts,
-      pinnedPrompts,
-      categoriesCount: Object.keys(categoryBreakdown).length,
-      categoryBreakdown,
-      recentlyAdded,
+      total: list.length,
+      favorites: list.filter((p) => p.isFavorite).length,
+      pinned: list.filter((p) => p.isPinned).length,
+      activeCategories: categories.size,
+      recentlyAdded: list.filter((p) => new Date(p.createdAt).getTime() >= weekAgo).length,
     };
   }
 }

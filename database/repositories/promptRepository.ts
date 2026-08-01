@@ -1,4 +1,4 @@
-import { IPrompt, PromptCategory } from '../models/Prompt';
+import { PromptCategory } from '../models/Prompt';
 
 export interface PromptQueryFilter {
   search?: string;
@@ -14,23 +14,27 @@ export interface ReorderItem {
 }
 
 export interface PromptStats {
-  totalPrompts: number;
-  favoritePrompts: number;
-  pinnedPrompts: number;
-  categoriesCount: number;
-  categoryBreakdown: Record<string, number>;
-  recentlyAdded: any[];
+  total: number;
+  favorites: number;
+  pinned: number;
+  activeCategories: number;
+  recentlyAdded: number;
 }
 
 export interface IPromptRepository {
-  getPrompts(filter: PromptQueryFilter): Promise<any[]>;
+  getPrompts(filter?: PromptQueryFilter): Promise<any[]>;
   getPromptById(id: string): Promise<any | null>;
   createPrompt(data: {
     title: string;
-    prompt: string;
+    content?: string;
+    prompt?: string;
     description?: string;
     category: PromptCategory;
     tags?: string[];
+    isFavorite?: boolean;
+    isPinned?: boolean;
+    usageCount?: number;
+    displayOrder?: number;
   }): Promise<any>;
   updatePrompt(id: string, data: any): Promise<any | null>;
   deletePrompt(id: string): Promise<boolean>;
@@ -38,6 +42,8 @@ export interface IPromptRepository {
   toggleFavorite(id: string): Promise<any | null>;
   togglePin(id: string): Promise<any | null>;
   reorderPrompts(items: ReorderItem[]): Promise<any[]>;
-  importPrompts(prompts: any[]): Promise<number>;
+  importPrompts(prompts: any[]): Promise<any[]>;
+  resetLibrary(): Promise<any[]>;
+  registerUse(id: string): Promise<any | null>;
   getStats(): Promise<PromptStats>;
 }

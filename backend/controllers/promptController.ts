@@ -1,15 +1,14 @@
 import { Request, Response } from 'express';
 import { getPromptRepository } from '../../database/config/db';
-import { createPromptSchema, updatePromptSchema, importPromptsSchema, reorderSchema } from '../validators/promptValidator';
 
 export const getPrompts = async (req: Request, res: Response): Promise<void> => {
   try {
     const { q, category, favorite, pinned, sort } = req.query as Record<string, string>;
     const repo = getPromptRepository();
     const prompts = await repo.getPrompts({ search: q, category, favorite, pinned, sort });
-    res.json({ success: true, count: prompts.length, data: prompts });
+    res.json(prompts);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
@@ -19,49 +18,37 @@ export const getPromptById = async (req: Request, res: Response): Promise<void> 
     const repo = getPromptRepository();
     const prompt = await repo.getPromptById(id);
     if (!prompt) {
-      res.status(404).json({ success: false, message: 'Prompt not found' });
+      res.status(404).json({ message: 'Prompt not found' });
       return;
     }
-    res.json({ success: true, data: prompt });
+    res.json(prompt);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
 export const createPrompt = async (req: Request, res: Response): Promise<void> => {
   try {
-    const validation = createPromptSchema.safeParse(req.body);
-    if (!validation.success) {
-      res.status(400).json({ success: false, errors: validation.error.issues });
-      return;
-    }
-
     const repo = getPromptRepository();
-    const newPrompt = await repo.createPrompt(validation.data);
-    res.status(201).json({ success: true, data: newPrompt });
+    const newPrompt = await repo.createPrompt(req.body);
+    res.status(201).json(newPrompt);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
 export const updatePrompt = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const validation = updatePromptSchema.safeParse(req.body);
-    if (!validation.success) {
-      res.status(400).json({ success: false, errors: validation.error.issues });
-      return;
-    }
-
     const repo = getPromptRepository();
-    const updatedPrompt = await repo.updatePrompt(id, validation.data);
+    const updatedPrompt = await repo.updatePrompt(id, req.body);
     if (!updatedPrompt) {
-      res.status(404).json({ success: false, message: 'Prompt not found' });
+      res.status(404).json({ message: 'Prompt not found' });
       return;
     }
-    res.json({ success: true, data: updatedPrompt });
+    res.json(updatedPrompt);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
@@ -71,12 +58,12 @@ export const deletePrompt = async (req: Request, res: Response): Promise<void> =
     const repo = getPromptRepository();
     const success = await repo.deletePrompt(id);
     if (!success) {
-      res.status(404).json({ success: false, message: 'Prompt not found' });
+      res.status(404).json({ message: 'Prompt not found' });
       return;
     }
-    res.json({ success: true, message: 'Prompt deleted successfully', id });
+    res.json({ message: 'Prompt deleted successfully', id });
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
@@ -86,12 +73,12 @@ export const duplicatePrompt = async (req: Request, res: Response): Promise<void
     const repo = getPromptRepository();
     const duplicate = await repo.duplicatePrompt(id);
     if (!duplicate) {
-      res.status(404).json({ success: false, message: 'Original prompt not found' });
+      res.status(404).json({ message: 'Original prompt not found' });
       return;
     }
-    res.status(201).json({ success: true, data: duplicate });
+    res.status(201).json(duplicate);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
@@ -101,12 +88,12 @@ export const toggleFavorite = async (req: Request, res: Response): Promise<void>
     const repo = getPromptRepository();
     const updated = await repo.toggleFavorite(id);
     if (!updated) {
-      res.status(404).json({ success: false, message: 'Prompt not found' });
+      res.status(404).json({ message: 'Prompt not found' });
       return;
     }
-    res.json({ success: true, data: updated });
+    res.json(updated);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
@@ -116,70 +103,57 @@ export const togglePin = async (req: Request, res: Response): Promise<void> => {
     const repo = getPromptRepository();
     const updated = await repo.togglePin(id);
     if (!updated) {
-      res.status(404).json({ success: false, message: 'Prompt not found' });
+      res.status(404).json({ message: 'Prompt not found' });
       return;
     }
-    res.json({ success: true, data: updated });
+    res.json(updated);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
 export const reorderPrompts = async (req: Request, res: Response): Promise<void> => {
   try {
-    const validation = reorderSchema.safeParse(req.body);
-    if (!validation.success) {
-      res.status(400).json({ success: false, errors: validation.error.issues });
-      return;
-    }
-
+    const payload = req.body;
     let items: { id: string; displayOrder: number }[] = [];
-    if ('orderedIds' in validation.data) {
-      items = validation.data.orderedIds.map((id, index) => ({
+
+    if (payload && Array.isArray(payload.order)) {
+      items = payload.order;
+    } else if (payload && Array.isArray(payload.orderedIds)) {
+      items = payload.orderedIds.map((id: string, index: number) => ({
         id,
         displayOrder: index + 1,
       }));
-    } else {
-      items = validation.data;
+    } else if (Array.isArray(payload)) {
+      items = payload;
     }
 
     const repo = getPromptRepository();
     const updatedList = await repo.reorderPrompts(items);
-    res.json({ success: true, message: 'Display order updated successfully', data: updatedList });
+    res.json(updatedList);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
 export const importPrompts = async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!Array.isArray(req.body)) {
-      res.status(400).json({
-        success: false,
-        message: 'Invalid JSON payload. Expected an array of prompt objects.',
-      });
-      return;
-    }
+    const rawPrompts = Array.isArray(req.body)
+      ? req.body
+      : Array.isArray(req.body?.prompts)
+      ? req.body.prompts
+      : null;
 
-    const validation = importPromptsSchema.safeParse(req.body);
-    if (!validation.success) {
-      res.status(400).json({
-        success: false,
-        message: 'Validation failed on imported items schema.',
-        errors: validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`),
-      });
+    if (!rawPrompts) {
+      res.status(400).json({ message: 'Invalid payload. Expected an array of prompts.' });
       return;
     }
 
     const repo = getPromptRepository();
-    const importedCount = await repo.importPrompts(validation.data);
-    res.status(201).json({
-      success: true,
-      importedCount,
-      message: `Successfully imported ${importedCount} prompts.`,
-    });
+    const importedList = await repo.importPrompts(rawPrompts);
+    res.status(201).json(importedList);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
@@ -187,21 +161,34 @@ export const exportPrompts = async (req: Request, res: Response): Promise<void> 
   try {
     const repo = getPromptRepository();
     const list = await repo.getPrompts({});
-    const sanitized = list.map((p) => ({
-      title: p.title,
-      prompt: p.prompt,
-      description: p.description,
-      category: p.category,
-      tags: p.tags,
-      favorite: p.favorite,
-      pinned: p.pinned,
-    }));
-
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', 'attachment; filename="ai-prompts-export.json"');
-    res.json(sanitized);
+    res.json(list);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
+  }
+};
+
+export const resetLibrary = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const repo = getPromptRepository();
+    const freshList = await repo.resetLibrary();
+    res.json(freshList);
+  } catch (error) {
+    res.status(500).json({ message: (error as Error).message });
+  }
+};
+
+export const registerUsage = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const repo = getPromptRepository();
+    const updated = await repo.registerUse(id);
+    if (!updated) {
+      res.status(404).json({ message: 'Prompt not found' });
+      return;
+    }
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ message: (error as Error).message });
   }
 };
 
@@ -209,8 +196,8 @@ export const getStats = async (req: Request, res: Response): Promise<void> => {
   try {
     const repo = getPromptRepository();
     const stats = await repo.getStats();
-    res.json({ success: true, data: stats });
+    res.json(stats);
   } catch (error) {
-    res.status(500).json({ success: false, message: (error as Error).message });
+    res.status(500).json({ message: (error as Error).message });
   }
 };

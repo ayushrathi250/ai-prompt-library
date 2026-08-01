@@ -1,249 +1,323 @@
-import React, { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import React, { useEffect, useRef, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { X, Plus, Sparkles, AlertCircle } from 'lucide-react';
-import { Modal } from '../common/Modal';
-import { createPromptSchema } from '../../../backend/validators/promptValidator';
-import { PromptCategory, CreatePromptInput } from '../../types/prompt';
-import { CATEGORY_NAMES } from '../../constants/categories';
+import { Loader2, Save, Sparkles, Tags } from 'lucide-react';
+import Modal from '../common/Modal';
+import { CATEGORIES } from '../../constants/categories';
+import { promptFormSchema } from '../../types/prompt';
+import type {
+  CategoryName,
+  Prompt,
+  PromptFormValues,
+  PromptFormOutput,
+} from '../../types/prompt';
 import { usePrompts } from '../../context/PromptContext';
 import { TagPill } from '../common/Badge';
 
-export const PromptFormModal: React.FC = () => {
-  const {
-    isCreateModalOpen,
-    setIsCreateModalOpen,
-    selectedPromptForEdit,
-    setSelectedPromptForEdit,
-    createPrompt,
-    updatePrompt,
-  } = usePrompts();
+interface PromptFormModalProps {
+  open: boolean;
+  onClose: () => void;
+  /** When present the modal opens pre-filled in edit mode. */
+  prompt?: Prompt | null;
+  defaultCategory?: CategoryName;
+}
 
-  const isOpen = isCreateModalOpen || !!selectedPromptForEdit;
-  const isEditing = !!selectedPromptForEdit;
+const EMPTY: PromptFormValues = {
+  title: '',
+  content: '',
+  category: 'Coding',
+  description: '',
+  tags: [],
+};
 
-  const [tagInput, setTagInput] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
+const inputBase =
+  'w-full rounded-lg border border-edge bg-canvas-deep/50 px-3.5 py-2.5 text-sm text-ink placeholder:text-muted/70 transition-colors focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/15';
+
+export function PromptFormModal({
+  open,
+  onClose,
+  prompt,
+  defaultCategory,
+}: PromptFormModalProps) {
+  const { addPrompt, editPrompt } = usePrompts();
+  const [tagDraft, setTagDraft] = useState('');
+  const titleRef = useRef<HTMLInputElement | null>(null);
 
   const {
     register,
     handleSubmit,
+    control,
     reset,
+    watch,
     setValue,
     formState: { errors, isSubmitting },
-  } = useForm<CreatePromptInput>({
-    resolver: zodResolver(createPromptSchema) as any,
-    defaultValues: {
-      title: '',
-      prompt: '',
-      description: '',
-      category: 'Coding',
-      tags: [],
-    },
+  } = useForm<PromptFormValues, unknown, PromptFormOutput>({
+    resolver: zodResolver(promptFormSchema),
+    defaultValues: EMPTY,
+    mode: 'onBlur',
   });
 
   useEffect(() => {
-    if (selectedPromptForEdit) {
-      setValue('title', selectedPromptForEdit.title);
-      setValue('prompt', selectedPromptForEdit.prompt);
-      setValue('description', selectedPromptForEdit.description || '');
-      setValue('category', selectedPromptForEdit.category);
-      setTags(selectedPromptForEdit.tags || []);
-    } else {
-      reset({
-        title: '',
-        prompt: '',
-        description: '',
-        category: 'Coding',
-        tags: [],
-      });
-      setTags([]);
+    if (!open) return;
+    setTagDraft('');
+    reset(
+      prompt
+        ? {
+            title: prompt.title,
+            content: prompt.content,
+            category: prompt.category,
+            description: prompt.description,
+            tags: [...prompt.tags],
+          }
+        : { ...EMPTY, category: defaultCategory ?? 'Coding' },
+    );
+    window.setTimeout(() => titleRef.current?.focus(), 60);
+  }, [open, prompt, defaultCategory, reset]);
+
+  const content = watch('content') ?? '';
+  const title = watch('title') ?? '';
+  const description = watch('description') ?? '';
+  const tags = watch('tags') ?? [];
+
+  const commitTag = (raw: string) => {
+    const clean = raw.trim().replace(/^#/, '').replace(/,+$/, '').slice(0, 24);
+    if (!clean) return;
+    const current = tags ?? [];
+    if (current.includes(clean) || current.length >= 10) {
+      setTagDraft('');
+      return;
     }
-  }, [selectedPromptForEdit, setValue, reset]);
-
-  const handleClose = () => {
-    setIsCreateModalOpen(false);
-    setSelectedPromptForEdit(null);
+    setValue('tags', [...current, clean], { shouldValidate: true, shouldDirty: true });
+    setTagDraft('');
   };
 
-  const handleAddTag = () => {
-    const trimmed = tagInput.trim().replace(/^#/, '');
-    if (trimmed && !tags.includes(trimmed)) {
-      const newTags = [...tags, trimmed];
-      setTags(newTags);
-      setValue('tags', newTags);
-      setTagInput('');
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    const newTags = tags.filter((t) => t !== tagToRemove);
-    setTags(newTags);
-    setValue('tags', newTags);
-  };
-
-  const handleTagKeyDown = (e: React.KeyboardEvent) => {
+  const onTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
-      handleAddTag();
+      commitTag(tagDraft);
+    } else if (e.key === 'Backspace' && !tagDraft && tags.length) {
+      setValue('tags', tags.slice(0, -1), { shouldDirty: true });
     }
   };
 
-  const onSubmit = async (data: CreatePromptInput) => {
-    const payload = { ...data, tags };
-    if (isEditing && selectedPromptForEdit) {
-      await updatePrompt(selectedPromptForEdit._id, payload);
-    } else {
-      await createPrompt(payload);
-    }
-  };
+  const onSubmit = handleSubmit(async (values) => {
+    const payload = {
+      title: values.title.trim(),
+      content: values.content.trim(),
+      category: values.category,
+      description: (values.description ?? '').trim(),
+      tags: values.tags ?? [],
+    };
+    const result = prompt
+      ? await editPrompt(prompt.id, payload)
+      : await addPrompt(payload);
+    if (result) onClose();
+  });
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={handleClose}
-      title={isEditing ? 'Edit Prompt' : 'Create New AI Prompt'}
+      open={open}
+      onClose={onClose}
+      size="lg"
+      icon={<Sparkles className="h-5 w-5" strokeWidth={2} />}
+      title={prompt ? 'Edit prompt' : 'New prompt'}
       subtitle={
-        isEditing
-          ? 'Update the title, prompt text, or categorization.'
-          : 'Add a reusable prompt template to your library.'
+        prompt
+          ? 'Refine the wording, category or tags.'
+          : 'Capture a prompt worth reusing. Use {{variables}} for placeholders.'
       }
-      maxWidth="2xl"
-    >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-        {/* Title */}
-        <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-            Prompt Title <span className="text-rose-500">*</span>
-          </label>
-          <input
-            type="text"
-            {...register('title')}
-            placeholder="e.g. Senior TypeScript Code Auditor"
-            className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-          />
-          {errors.title && (
-            <p className="mt-1 text-xs text-rose-500 flex items-center gap-1 font-medium">
-              <AlertCircle className="w-3.5 h-3.5" />
-              {errors.title.message}
-            </p>
-          )}
-        </div>
-
-        {/* Category & Tags Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Category */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-              Category <span className="text-rose-500">*</span>
-            </label>
-            <select
-              {...register('category')}
-              className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-            >
-              {CATEGORY_NAMES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Tags */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-              Tags (Press Enter or Comma)
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                placeholder="e.g. React, Audit, API"
-                className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-              <button
-                type="button"
-                onClick={handleAddTag}
-                className="px-3 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-semibold text-xs hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Active Tag Pills */}
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
-            {tags.map((tag) => (
-              <TagPill key={tag} tag={tag} onRemove={() => handleRemoveTag(tag)} />
-            ))}
-          </div>
-        )}
-
-        {/* Description */}
-        <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-            Short Description
-          </label>
-          <input
-            type="text"
-            {...register('description')}
-            placeholder="Brief overview of when and how to use this prompt..."
-            className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-          />
-          {errors.description && (
-            <p className="mt-1 text-xs text-rose-500 flex items-center gap-1 font-medium">
-              <AlertCircle className="w-3.5 h-3.5" />
-              {errors.description.message}
-            </p>
-          )}
-        </div>
-
-        {/* Prompt Content */}
-        <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-            Prompt Body / Template <span className="text-rose-500">*</span>
-          </label>
-          <textarea
-            {...register('prompt')}
-            rows={6}
-            placeholder="You are an AI assistant specialized in... [INSERT INSTRUCTIONS HERE]"
-            className="w-full px-4 py-3 text-sm font-mono bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all leading-relaxed"
-          />
-          {errors.prompt && (
-            <p className="mt-1 text-xs text-rose-500 flex items-center gap-1 font-medium">
-              <AlertCircle className="w-3.5 h-3.5" />
-              {errors.prompt.message}
-            </p>
-          )}
-        </div>
-
-        {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+      footer={
+        <>
+          <span className="mr-auto hidden text-xs text-muted sm:block">
+            {content.length.toLocaleString()} characters
+          </span>
           <button
             type="button"
-            onClick={handleClose}
-            className="px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+            onClick={onClose}
+            className="focus-ring rounded-lg border border-edge px-4 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-canvas-deep"
           >
             Cancel
           </button>
           <button
             type="submit"
+            form="prompt-form"
             disabled={isSubmitting}
-            className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-xl transition-all shadow-lg shadow-indigo-600/25 flex items-center gap-2 disabled:opacity-50"
+            className="focus-ring inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-60"
           >
-            <Sparkles className="w-4 h-4" />
-            {isSubmitting
-              ? 'Saving...'
-              : isEditing
-              ? 'Save Changes'
-              : 'Create Prompt'}
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {prompt ? 'Save changes' : 'Create prompt'}
           </button>
+        </>
+      }
+    >
+      <form id="prompt-form" onSubmit={onSubmit} className="space-y-5">
+        {/* Title */}
+        <div>
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <label htmlFor="title" className="text-[13px] font-semibold text-ink">
+              Title <span className="text-danger">*</span>
+            </label>
+            <span className="font-mono text-[11px] text-muted">{title.length}/90</span>
+          </div>
+          <input
+            id="title"
+            {...register('title')}
+            ref={(el) => {
+              register('title').ref(el);
+              titleRef.current = el;
+            }}
+            placeholder="e.g. Senior Code Reviewer"
+            maxLength={90}
+            className={inputBase}
+          />
+          {errors.title && (
+            <p className="mt-1.5 text-xs text-danger">{errors.title.message}</p>
+          )}
+        </div>
+
+        {/* Category */}
+        <div>
+          <label htmlFor="category" className="mb-1.5 block text-[13px] font-semibold text-ink">
+            Category <span className="text-danger">*</span>
+          </label>
+          <Controller
+            name="category"
+            control={control}
+            render={({ field }) => (
+              <>
+                <select
+                  id="category"
+                  {...field}
+                  className={`${inputBase} appearance-none bg-[length:12px] bg-[right_1rem_center] bg-no-repeat pr-10`}
+                  style={{
+                    backgroundImage:
+                      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%238b8178' d='M6 8.5 1.5 4h9z'/%3E%3C/svg%3E\")",
+                  }}
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {CATEGORIES.map((c) => {
+                    const active = field.value === c.name;
+                    const Icon = c.icon;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => field.onChange(c.name)}
+                        className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-all"
+                        style={{
+                          color: active ? c.color : 'var(--muted)',
+                          borderColor: active
+                            ? `color-mix(in srgb, ${c.color} 50%, transparent)`
+                            : 'var(--border)',
+                          background: active
+                            ? `color-mix(in srgb, ${c.color} 14%, transparent)`
+                            : 'transparent',
+                        }}
+                      >
+                        <Icon className="h-3 w-3" strokeWidth={2.2} />
+                        {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          />
+        </div>
+
+        {/* Content */}
+        <div>
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <label htmlFor="content" className="text-[13px] font-semibold text-ink">
+              Prompt content <span className="text-danger">*</span>
+            </label>
+            <span className="font-mono text-[11px] text-muted">{content.length}/8000</span>
+          </div>
+          <textarea
+            id="content"
+            {...register('content')}
+            rows={9}
+            maxLength={8000}
+            placeholder={'You are a…\n\nTask: …\nConstraints: …\nOutput format: …'}
+            className={`${inputBase} resize-y font-mono text-[12.5px] leading-relaxed`}
+          />
+          {errors.content && (
+            <p className="mt-1.5 text-xs text-danger">{errors.content.message}</p>
+          )}
+        </div>
+
+        {/* Description */}
+        <div>
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <label htmlFor="description" className="text-[13px] font-semibold text-ink">
+              Description
+            </label>
+            <span className="font-mono text-[11px] text-muted">{description.length}/240</span>
+          </div>
+          <textarea
+            id="description"
+            {...register('description')}
+            rows={2}
+            maxLength={240}
+            placeholder="One line on when to reach for this prompt."
+            className={`${inputBase} resize-none`}
+          />
+          {errors.description && (
+            <p className="mt-1.5 text-xs text-danger">{errors.description.message}</p>
+          )}
+        </div>
+
+        {/* Tags */}
+        <div>
+          <label htmlFor="tags" className="mb-1.5 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+            <Tags className="h-3.5 w-3.5 text-muted" /> Tags
+            <span className="font-normal text-muted">— press Enter or , to add</span>
+          </label>
+          <div
+            className="flex flex-wrap items-center gap-1.5 rounded-lg border border-edge bg-canvas-deep/50 p-2 transition-colors focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/15"
+            onClick={() => document.getElementById('tags')?.focus()}
+          >
+            {tags.map((tag) => (
+              <TagPill
+                key={tag}
+                label={tag}
+                onRemove={() =>
+                  setValue(
+                    'tags',
+                    tags.filter((t) => t !== tag),
+                    { shouldDirty: true },
+                  )
+                }
+              />
+            ))}
+            <input
+              id="tags"
+              value={tagDraft}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={onTagKeyDown}
+              onBlur={() => commitTag(tagDraft)}
+              disabled={tags.length >= 10}
+              placeholder={tags.length >= 10 ? 'Tag limit reached' : 'Add a tag…'}
+              className="min-w-[8rem] flex-1 bg-transparent px-1.5 py-1 text-sm text-ink placeholder:text-muted/70 focus:outline-none"
+            />
+          </div>
+          {errors.tags && (
+            <p className="mt-1.5 text-xs text-danger">{errors.tags.message as string}</p>
+          )}
         </div>
       </form>
     </Modal>
   );
-};
+}
+
+export default PromptFormModal;
